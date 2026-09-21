@@ -6,12 +6,12 @@
 `app.main.create_app`. Для подключения в `create_app`:
 
 ```python
-from app.agent.provider import OpenAIResponsesProvider
+from app.agent.provider import EnvironmentOpenAIProvider
 from app.agent.router import router
 from app.agent.service import AgentInterpreter
 
 app.include_router(router)
-app.state.agent_interpreter = AgentInterpreter(OpenAIResponsesProvider.from_environment())
+app.state.agent_interpreter = AgentInterpreter(EnvironmentOpenAIProvider())
 app.state.agent_context_provider = get_agent_context
 ```
 
@@ -23,8 +23,11 @@ app.state.agent_context_provider = get_agent_context
 вызывает `/replans`.
 
 Новые runtime-настройки уже согласованы общим планом: `AI_API_KEY`, `AI_MODEL`,
-`AI_TIMEOUT_SECONDS`. Дополнительная Python-зависимость не нужна: provider
-использует стандартный HTTPS-клиент для OpenAI Responses API с `json_schema`.
+`AI_TIMEOUT_SECONDS`. Настройки разрешаются только при запросе `/agent/interpret`:
+при отсутствующем ключе, модели или неверном timeout backend продолжает работу,
+а router возвращает безопасный 503. Дополнительная Python-зависимость не нужна:
+provider использует стандартный HTTPS-клиент для OpenAI Responses API с
+`json_schema`.
 
 ## Константину: состояния UI
 

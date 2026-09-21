@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.agent.provider import ProviderNotConfigured
+from app.agent.provider import EnvironmentOpenAIProvider, ProviderNotConfigured
 from app.agent.router import router
 from app.agent.schemas import AgentContext, ModelInterpretation
 from app.agent.service import AgentInterpreter
@@ -56,3 +56,19 @@ def test_interpret_endpoint_requires_host_application_context_integration() -> N
 
     assert response.status_code == 503
     assert response.json() == {"detail": "AI interpreter is not configured"}
+
+
+def test_lazy_environment_configuration_keeps_interpret_endpoint_available(monkeypatch) -> None:
+    monkeypatch.delenv("AI_API_KEY", raising=False)
+    monkeypatch.delenv("AI_MODEL", raising=False)
+    app = FastAPI()
+    app.include_router(router)
+    app.state.agent_interpreter = AgentInterpreter(EnvironmentOpenAIProvider())
+    app.state.agent_context_provider = lambda plan_id: AgentContext(
+        base_plan_id=plan_id, vehicle_ids=("VAN-01", "VAN-02")
+    )
+
+    response = TestClient(app).post("/agent/interpret", json={"message": "VAN-02 сломалась", "base_plan_id": 4})
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "AI is not configured"}

@@ -141,6 +141,14 @@ class OpenAIResponsesProvider:
         }
 
 
+@dataclass(frozen=True, slots=True)
+class EnvironmentOpenAIProvider:
+    """Resolve process configuration lazily so a missing key never blocks app startup."""
+
+    def interpret(self, message: str, context: AgentContext) -> ModelInterpretation:
+        return OpenAIResponsesProvider.from_environment().interpret(message, context)
+
+
 def _output_text(response: dict[str, Any]) -> str:
     """Extract text from the documented Responses object without exposing it upstream."""
     direct_output = response.get("output_text")

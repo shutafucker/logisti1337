@@ -1,6 +1,7 @@
 import pytest
 
 from app.agent.provider import (
+    EnvironmentOpenAIProvider,
     OpenAIResponsesProvider,
     ProviderInvalidResponse,
     ProviderNotConfigured,
@@ -15,6 +16,15 @@ def test_provider_requires_key_and_model(monkeypatch: pytest.MonkeyPatch) -> Non
 
     with pytest.raises(ProviderNotConfigured, match="AI_API_KEY"):
         ProviderSettings.from_environment()
+
+
+def test_environment_provider_defers_missing_configuration_until_interpretation(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("AI_API_KEY", raising=False)
+    monkeypatch.delenv("AI_MODEL", raising=False)
+    provider = EnvironmentOpenAIProvider()
+
+    with pytest.raises(ProviderNotConfigured):
+        provider.interpret("VAN-02 сломалась", AgentContext(base_plan_id=2, vehicle_ids=("VAN-02",)))
 
 
 def test_provider_requests_strict_schema_with_only_safe_action_context() -> None:
