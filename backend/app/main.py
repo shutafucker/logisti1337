@@ -8,6 +8,7 @@ from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from dotenv import load_dotenv
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.database import create_session_factory
@@ -43,6 +44,9 @@ from app.schemas import (
     RouteStopResponse,
     UnassignedResponse,
 )
+
+# Process environment variables override values from this developer-only file.
+load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
 DEFAULT_DATABASE_URL = os.getenv(
     "LOGISTIAI_DATABASE_URL",

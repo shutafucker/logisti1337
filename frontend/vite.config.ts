@@ -2,6 +2,8 @@ import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 
 export default defineConfig({
+  // Share the repository-level .env with the API. Only VITE_* values reach the browser.
+  envDir: '..',
   plugins: [react()],
   server: {
     proxy: {

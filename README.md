@@ -8,6 +8,11 @@
 
 Нужны Python 3.14+ и Node.js 20+.
 
+Необязательно: скопируйте `.env.example` в `.env`, если нужно изменить
+расположение базы или адрес API. `.env` не коммитится. Backend автоматически
+читает этот файл, а Vite передаёт во фронтенд только переменные с префиксом
+`VITE_` — не храните в них секреты.
+
 В первом терминале запустите API:
 
 ```bash
@@ -33,12 +38,14 @@ Vite проксирует запросы `/api/*` на `http://127.0.0.1:8000/*`
 адреса API задайте `VITE_API_BASE_URL`, например:
 
 ```bash
-VITE_API_BASE_URL=http://localhost:8000 npm run dev
+cp .env.example .env
+# затем раскомментируйте VITE_API_BASE_URL в .env
+npm run dev
 ```
 
 SQLite по умолчанию хранится в `backend/data/logistiai.db` и не попадает в Git.
 Для другого расположения установите `LOGISTIAI_DATABASE_URL`, например
-`sqlite:////tmp/logistiai.db` перед запуском API.
+`sqlite:////tmp/logistiai.db` в `.env` перед запуском API.
 
 ## Импорт данных
 
