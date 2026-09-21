@@ -70,3 +70,29 @@ export type ImportResult = {
   accepted_count: number
   errors: ImportError[]
 }
+
+export type PlanSnapshot = {
+  assigned_orders: number
+  unassigned_orders: number
+  distance_km: number
+  duration_minutes: number
+}
+
+export type ReplanResult = {
+  base_plan_id: number
+  plan: RoutePlan
+  comparison: { before: PlanSnapshot; after: PlanSnapshot; delta: PlanSnapshot }
+  unavailable_vehicle_ids: string[]
+}
+
+export type AgentResult = {
+  status: 'ready'
+  action: { type: 'exclude_vehicles'; vehicle_ids: string[] }
+  explanation: string
+  question: null
+} | {
+  status: 'needs_clarification' | 'unsupported'
+  action: null
+  explanation: string
+  question: string | null
+}

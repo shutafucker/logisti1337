@@ -1,3 +1,6 @@
 node_modules/
 dist/
 *.tsbuildinfo
+.npm-cache/
+.integration-venv/
+.verification/
