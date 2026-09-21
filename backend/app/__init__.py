@@ -1,0 +1,1 @@
+"""LogistiAI backend domain package."""
