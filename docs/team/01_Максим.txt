@@ -10,7 +10,7 @@ backend/app/main.py, domain.py, routing.py, schemas.py, models.py,
 repository.py, imports.py, database.py, backend/pyproject.toml.
 backend/tests/*, кроме test_agent*.py. Общий контракт — docs/team/00_Общий_план.txt.
 Не редактируешь frontend, backend/app/agent и документацию демо.
-Ветка: feature/maxim-backend.
+Ветка: dev_Max.
 
 2. СТЕК И ПОДГОТОВКА
 Python >=3.14; FastAPI; Pydantic; SQLAlchemy; SQLite; pytest/httpx.
