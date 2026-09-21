@@ -1,0 +1,5 @@
+external_id,latitude,longitude,capacity,status
+VAN-01,51.1599,71.4304,8,available
+VAN-02,51.1621,71.4320,8,available
+VAN-03,51.1670,71.4270,6,available
+VAN-04,51.1540,71.4370,6,available

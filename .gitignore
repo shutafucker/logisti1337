@@ -1,6 +1,9 @@
 .env
 .env.*
 !.env.example
+.venv/
+*.db
+*.sqlite
 frontend/.env
 frontend/.env.*
 !frontend/.env.example
