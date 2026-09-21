@@ -85,3 +85,109 @@ def test_imported_data_invalidates_old_plan_and_dashboard_returns_a_fresh_plan(t
     assert dashboard["summary"]["assigned_orders"] == sum(
         len(route["stops"]) for route in dashboard["route_plan"]["routes"]
     )
+
+
+def _plan_with_two_vehicles(client: TestClient) -> dict:
+    client.post("/imports/orders", json=[
+        {"external_id": "high", "latitude": 43.24, "longitude": 76.95, "demand": 2, "priority": 2},
+        {"external_id": "low", "latitude": 43.25, "longitude": 76.96, "demand": 2, "priority": 1},
+    ])
+    client.post("/imports/vehicles", json=[
+        {"external_id": "van-a", "latitude": 43.238, "longitude": 76.945, "capacity": 2, "status": "available"},
+        {"external_id": "van-b", "latitude": 43.238, "longitude": 76.945, "capacity": 2, "status": "available"},
+    ])
+    response = client.post("/route-plans")
+    assert response.status_code == 201
+    return response.json()
+
+
+def test_replan_excludes_vehicle_saves_new_plan_and_compares_with_unchanged_base(tmp_path) -> None:
+    client = client_for(tmp_path)
+    base = _plan_with_two_vehicles(client)
+
+    response = client.post("/replans", json={
+        "base_plan_id": base["id"], "unavailable_vehicle_ids": ["van-a"],
+    })
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["base_plan_id"] == base["id"]
+    assert body["plan"]["id"] != base["id"]
+    assert [route["vehicle_external_id"] for route in body["plan"]["routes"]] == ["van-b"]
+    assert body["comparison"] == {
+        "before": {"assigned_orders": 2, "unassigned_orders": 0, "distance_km": base["metrics"]["total_distance_km"], "duration_minutes": base["metrics"]["total_duration_minutes"]},
+        "after": {"assigned_orders": 1, "unassigned_orders": 1, "distance_km": body["plan"]["metrics"]["total_distance_km"], "duration_minutes": body["plan"]["metrics"]["total_duration_minutes"]},
+        "delta": {
+            "assigned_orders": -1,
+            "unassigned_orders": 1,
+            "distance_km": body["plan"]["metrics"]["total_distance_km"] - base["metrics"]["total_distance_km"],
+            "duration_minutes": body["plan"]["metrics"]["total_duration_minutes"] - base["metrics"]["total_duration_minutes"],
+        },
+    }
+    assert client.get(f"/route-plans/{base['id']}").json() == base
+    assert {vehicle["external_id"]: vehicle["status"] for vehicle in client.get("/dashboard").json()["vehicles"]} == {
+        "van-a": "available", "van-b": "available",
+    }
+
+    repeated = client.post("/replans", json={
+        "base_plan_id": base["id"], "unavailable_vehicle_ids": ["van-a"],
+    }).json()
+    assert repeated["plan"] | {"id": 0} == body["plan"] | {"id": 0}
+    assert repeated["comparison"] == body["comparison"]
+
+
+def test_replan_with_every_vehicle_excluded_marks_every_order_unassigned(tmp_path) -> None:
+    client = client_for(tmp_path)
+    base = _plan_with_two_vehicles(client)
+
+    response = client.post("/replans", json={
+        "base_plan_id": base["id"], "unavailable_vehicle_ids": ["van-a", "van-b"],
+    })
+
+    assert response.status_code == 201
+    assert response.json()["plan"]["routes"] == []
+    assert response.json()["plan"]["unassigned"] == [
+        {"order_external_id": "high", "reason": "no_available_vehicle"},
+        {"order_external_id": "low", "reason": "no_available_vehicle"},
+    ]
+
+
+def test_replan_rejects_unknown_vehicle_and_stale_base_plan(tmp_path) -> None:
+    client = client_for(tmp_path)
+    base = _plan_with_two_vehicles(client)
+
+    unknown = client.post("/replans", json={"base_plan_id": base["id"], "unavailable_vehicle_ids": ["missing"]})
+    assert unknown.status_code == 404
+    assert unknown.json()["detail"] == "Unknown vehicle ID: missing"
+
+    client.post("/imports/orders", json=[
+        {"external_id": "new", "latitude": 43.26, "longitude": 76.97, "demand": 1, "priority": 1},
+    ])
+    stale = client.post("/replans", json={"base_plan_id": base["id"], "unavailable_vehicle_ids": []})
+    assert stale.status_code == 409
+    assert stale.json()["detail"] == "Base route plan is stale; calculate a new plan first"
+
+
+def test_replan_validates_base_plan_and_duplicate_vehicle_ids(tmp_path) -> None:
+    client = client_for(tmp_path)
+
+    missing_plan = client.post("/replans", json={"base_plan_id": 999, "unavailable_vehicle_ids": []})
+    assert missing_plan.status_code == 404
+    assert missing_plan.json()["detail"] == "Base route plan not found"
+
+    base = _plan_with_two_vehicles(client)
+    invalid = client.post("/replans", json={
+        "base_plan_id": base["id"], "unavailable_vehicle_ids": ["van-a", "van-a"],
+    })
+    assert invalid.status_code == 422
+
+    no_change = client.post("/replans", json={
+        "base_plan_id": base["id"], "unavailable_vehicle_ids": [],
+    })
+    assert no_change.status_code == 201
+    assert no_change.json()["comparison"]["delta"] == {
+        "assigned_orders": 0,
+        "unassigned_orders": 0,
+        "distance_km": 0,
+        "duration_minutes": 0,
+    }

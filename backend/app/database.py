@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 
@@ -20,4 +20,19 @@ def create_session_factory(database_url: str) -> sessionmaker[Session]:
         connect_args={"check_same_thread": False} if database_url.startswith("sqlite") else {},
     )
     Base.metadata.create_all(engine)
+    if database_url.startswith("sqlite"):
+        _migrate_sqlite_schema(engine)
     return sessionmaker(bind=engine, expire_on_commit=False)
+
+
+def _migrate_sqlite_schema(engine) -> None:
+    """Apply the one additive migration needed by local SQLite databases."""
+    with engine.begin() as connection:
+        columns = {
+            row[1]
+            for row in connection.execute(text("PRAGMA table_info(route_plans)"))
+        }
+        if "is_current" not in columns:
+            connection.execute(
+                text("ALTER TABLE route_plans ADD COLUMN is_current BOOLEAN NOT NULL DEFAULT 1")
+            )

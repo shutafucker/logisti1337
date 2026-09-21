@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -38,6 +38,7 @@ class RoutePlanRecord(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     average_speed_kmh: Mapped[float] = mapped_column(Float)
     service_minutes: Mapped[float] = mapped_column(Float)
+    is_current: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1", index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     routes: Mapped[list[RouteRecord]] = relationship(back_populates="plan", cascade="all, delete-orphan")
     unassigned: Mapped[list[UnassignedRecord]] = relationship(back_populates="plan", cascade="all, delete-orphan")

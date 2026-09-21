@@ -58,8 +58,15 @@ def upsert_vehicles(session: Session, vehicles: list[Vehicle]) -> None:
     session.commit()
 
 
-def save_plan(session: Session, plan: RoutePlan, average_speed_kmh: float, service_minutes: float) -> RoutePlanRecord:
-    record = RoutePlanRecord(average_speed_kmh=average_speed_kmh, service_minutes=service_minutes)
+def save_plan(
+    session: Session, plan: RoutePlan, average_speed_kmh: float, service_minutes: float,
+    *, is_current: bool = True,
+) -> RoutePlanRecord:
+    record = RoutePlanRecord(
+        average_speed_kmh=average_speed_kmh,
+        service_minutes=service_minutes,
+        is_current=is_current,
+    )
     for route in plan.routes:
         route_record = RouteRecord(vehicle_external_id=route.vehicle.external_id, assigned_demand=route.assigned_demand)
         for stop in route.stops:
@@ -94,6 +101,7 @@ def get_plan(session: Session, plan_id: int) -> RoutePlanRecord | None:
 def latest_plan(session: Session) -> RoutePlanRecord | None:
     query = (
         select(RoutePlanRecord)
+        .where(RoutePlanRecord.is_current.is_(True))
         .order_by(RoutePlanRecord.id.desc())
         .options(selectinload(RoutePlanRecord.routes).selectinload(RouteRecord.stops), selectinload(RoutePlanRecord.unassigned))
     )
@@ -105,7 +113,9 @@ def has_imported_data(session: Session) -> bool:
 
 
 def invalidate_plans(session: Session) -> None:
-    """Discard derived plans after source orders or vehicles have changed."""
-    for plan in session.scalars(select(RoutePlanRecord)):
-        session.delete(plan)
+    """Retain derived plans for audit, but prevent them from being replanned."""
+    for plan in session.scalars(
+        select(RoutePlanRecord).where(RoutePlanRecord.is_current.is_(True))
+    ):
+        plan.is_current = False
     session.commit()

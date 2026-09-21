@@ -39,6 +39,10 @@ from app.schemas import (
     ImportResponse,
     MetricsResponse,
     OptimizeRequest,
+    PlanComparisonResponse,
+    PlanSummaryResponse,
+    ReplanRequest,
+    ReplanResponse,
     RoutePlanResponse,
     RouteResponse,
     RouteStopResponse,
@@ -90,12 +94,51 @@ def create_app(database_url: str | None = None) -> FastAPI:
 
     @app.post("/route-plans", response_model=RoutePlanResponse, status_code=201)
     def create_route_plan(payload: OptimizeRequest = OptimizeRequest(), session: Session = Depends(get_session)) -> RoutePlanResponse:
+        invalidate_plans(session)
         plan = DeterministicRoutingProvider().optimize(
             list_orders(session), list_vehicles(session),
             average_speed_kmh=payload.average_speed_kmh,
             service_minutes=payload.service_minutes,
         )
         return _plan_response(save_plan(session, plan, payload.average_speed_kmh, payload.service_minutes))
+
+    @app.post("/replans", response_model=ReplanResponse, status_code=201)
+    def replan(payload: ReplanRequest, session: Session = Depends(get_session)) -> ReplanResponse:
+        base_plan = get_plan(session, payload.base_plan_id)
+        if base_plan is None:
+            raise HTTPException(status_code=404, detail="Base route plan not found")
+        if not base_plan.is_current:
+            raise HTTPException(status_code=409, detail="Base route plan is stale; calculate a new plan first")
+
+        vehicles = list_vehicles(session)
+        known_vehicle_ids = {vehicle.external_id for vehicle in vehicles}
+        unknown_vehicle_ids = sorted(set(payload.unavailable_vehicle_ids) - known_vehicle_ids)
+        if unknown_vehicle_ids:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Unknown vehicle ID: {unknown_vehicle_ids[0]}",
+            )
+
+        excluded = set(payload.unavailable_vehicle_ids)
+        scenario_plan = DeterministicRoutingProvider().optimize(
+            list_orders(session),
+            [vehicle for vehicle in vehicles if vehicle.external_id not in excluded],
+            average_speed_kmh=base_plan.average_speed_kmh,
+            service_minutes=base_plan.service_minutes,
+        )
+        saved_plan = save_plan(
+            session,
+            scenario_plan,
+            base_plan.average_speed_kmh,
+            base_plan.service_minutes,
+        )
+        before, after = _plan_response(base_plan), _plan_response(saved_plan)
+        return ReplanResponse(
+            base_plan_id=base_plan.id,
+            plan=after,
+            comparison=_comparison_response(before, after),
+            unavailable_vehicle_ids=payload.unavailable_vehicle_ids,
+        )
 
     @app.get("/route-plans/{plan_id}", response_model=RoutePlanResponse)
     def read_route_plan(plan_id: int, session: Session = Depends(get_session)) -> RoutePlanResponse:
@@ -189,6 +232,29 @@ def _plan_response(plan: RoutePlanRecord) -> RoutePlanResponse:
             total_duration_minutes=sum(route.duration_minutes for route in routes),
         ),
         unassigned=unassigned,
+    )
+
+
+def _plan_summary(plan: RoutePlanResponse) -> PlanSummaryResponse:
+    return PlanSummaryResponse(
+        assigned_orders=sum(len(route.stops) for route in plan.routes),
+        unassigned_orders=len(plan.unassigned),
+        distance_km=plan.metrics.total_distance_km,
+        duration_minutes=plan.metrics.total_duration_minutes,
+    )
+
+
+def _comparison_response(before_plan: RoutePlanResponse, after_plan: RoutePlanResponse) -> PlanComparisonResponse:
+    before, after = _plan_summary(before_plan), _plan_summary(after_plan)
+    return PlanComparisonResponse(
+        before=before,
+        after=after,
+        delta=PlanSummaryResponse(
+            assigned_orders=after.assigned_orders - before.assigned_orders,
+            unassigned_orders=after.unassigned_orders - before.unassigned_orders,
+            distance_km=after.distance_km - before.distance_km,
+            duration_minutes=after.duration_minutes - before.duration_minutes,
+        ),
     )
 
 
