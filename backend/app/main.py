@@ -43,7 +43,10 @@ from app.schemas import (
     UnassignedResponse,
 )
 
-DEFAULT_DATABASE_URL = os.getenv("LOGISTIAI_DATABASE_URL", "sqlite:///./data/logistiai.db")
+DEFAULT_DATABASE_URL = os.getenv(
+    "LOGISTIAI_DATABASE_URL",
+    f"sqlite:///{Path(__file__).resolve().parents[1] / 'data' / 'logistiai.db'}",
+)
 
 
 def create_app(database_url: str | None = None) -> FastAPI:
