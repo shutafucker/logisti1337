@@ -1,4 +1,4 @@
-import type { DashboardData, ImportError, RoutePlan } from './types'
+import type { DashboardData, ImportError, ImportResult, RoutePlan } from './types'
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? '/api').replace(/\/$/, '')
 
@@ -30,6 +30,6 @@ export const api = {
   importFile: async (resource: 'orders' | 'vehicles', file: File) => {
     const form = new FormData()
     form.append('file', file)
-    return request<{ errors?: ImportError[] }>(`/imports/${resource}`, { method: 'POST', body: form })
+    return request<ImportResult>(`/imports/${resource}`, { method: 'POST', body: form })
   },
 }

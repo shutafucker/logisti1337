@@ -33,6 +33,7 @@ class VehicleRecord(Base):
 
 class RoutePlanRecord(Base):
     __tablename__ = "route_plans"
+    __table_args__ = {"sqlite_autoincrement": True}
 
     id: Mapped[int] = mapped_column(primary_key=True)
     average_speed_kmh: Mapped[float] = mapped_column(Float)

@@ -6,6 +6,7 @@ import { MapPanel } from './MapPanel'
 const initialData: DashboardData = {
   summary: { total_orders: 0, assigned_orders: 0, unassigned_orders: 0, active_vehicles: 0 },
   orders: [], vehicles: [], metrics: { total_distance_km: 0, total_duration_minutes: 0 }, unassigned: [],
+  route_plan: { id: 0, routes: [], metrics: { total_distance_km: 0, total_duration_minutes: 0 }, unassigned: [] },
 }
 
 const humanize = (value: string) => value.replace(/_/g, ' ')
@@ -18,12 +19,8 @@ function ImportControl({ resource, onError, onSuccess }: { resource: 'orders' | 
     if (!file) return
     try {
       const result = await api.importFile(resource, file)
-      const details = result.errors ?? []
-      if (details.length) {
-        onError(formatImportErrors(details))
-      } else {
-        onSuccess()
-      }
+      if (result.accepted_count > 0) onSuccess()
+      if (result.errors.length) onError(formatImportErrors(result.errors))
     } catch (error) {
       const details = error instanceof ApiError ? error.details : []
       onError(details.length ? formatImportErrors(details) : errorSummary(error))
@@ -61,7 +58,11 @@ export function Dashboard() {
 
   const loadDashboard = useCallback(async () => {
     setLoading(true); setError(null)
-    try { setData(await api.getDashboard()) }
+    try {
+      const dashboard = await api.getDashboard()
+      setData(dashboard)
+      setPlan(dashboard.route_plan)
+    }
     catch (requestError) { setError(`Couldn't load the dispatcher dashboard. ${errorSummary(requestError)}`) }
     finally { setLoading(false) }
   }, [])
@@ -79,7 +80,11 @@ export function Dashboard() {
     finally { setCalculating(false) }
   }
 
-  const onImportSuccess = () => { setNotice('Import accepted. Dashboard data has been refreshed.'); void loadDashboard() }
+  const onImportSuccess = () => {
+    setPlan(null)
+    setNotice('Import accepted. Dashboard data has been refreshed.')
+    void loadDashboard()
+  }
   const visibleRoutes = plan?.routes ?? []
   const unassigned = plan?.unassigned ?? data.unassigned
   const metrics = plan?.metrics ?? data.metrics

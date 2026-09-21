@@ -23,6 +23,7 @@ from app.models import RoutePlanRecord
 from app.repository import (
     get_plan,
     has_imported_data,
+    invalidate_plans,
     latest_plan,
     list_orders,
     list_vehicles,
@@ -71,12 +72,16 @@ def create_app(database_url: str | None = None) -> FastAPI:
     async def import_orders(request: Request, session: Session = Depends(get_session)) -> ImportResponse:
         result = await _parse_import(request, parse_orders_json, parse_orders_csv)
         upsert_orders(session, result.accepted)
+        if result.accepted:
+            invalidate_plans(session)
         return _import_response(result.accepted, result.errors)
 
     @app.post("/imports/vehicles", response_model=ImportResponse)
     async def import_vehicles(request: Request, session: Session = Depends(get_session)) -> ImportResponse:
         result = await _parse_import(request, parse_vehicles_json, parse_vehicles_csv)
         upsert_vehicles(session, result.accepted)
+        if result.accepted:
+            invalidate_plans(session)
         return _import_response(result.accepted, result.errors)
 
     @app.post("/route-plans", response_model=RoutePlanResponse, status_code=201)
@@ -115,6 +120,7 @@ def create_app(database_url: str | None = None) -> FastAPI:
             vehicles=[_vehicle_payload(vehicle) for vehicle in vehicles],
             metrics=plan_response.metrics,
             unassigned=plan_response.unassigned,
+            route_plan=plan_response,
         )
 
     return app
@@ -134,7 +140,10 @@ async def _parse_import(request: Request, parse_json: Callable, parse_csv: Calla
     upload = form.get("file")
     if upload is None or not hasattr(upload, "read"):
         raise HTTPException(status_code=422, detail="Provide a CSV or JSON file in the file field")
-    raw_payload = (await upload.read()).decode("utf-8-sig")
+    try:
+        raw_payload = (await upload.read()).decode("utf-8-sig")
+    except UnicodeDecodeError as error:
+        raise HTTPException(status_code=400, detail="Import files must use UTF-8 encoding") from error
     filename = getattr(upload, "filename", "") or ""
     if filename.lower().endswith(".json"):
         try:

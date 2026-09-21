@@ -50,6 +50,7 @@ export type DashboardData = {
   vehicles: Vehicle[]
   metrics: Metrics
   unassigned: UnassignedOrder[]
+  route_plan: RoutePlan
 }
 
 export type RoutePlan = {
@@ -63,4 +64,9 @@ export type ImportError = {
   row?: number
   field?: string
   reason: string
+}
+
+export type ImportResult = {
+  accepted_count: number
+  errors: ImportError[]
 }

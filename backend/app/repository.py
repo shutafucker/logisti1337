@@ -102,3 +102,10 @@ def latest_plan(session: Session) -> RoutePlanRecord | None:
 
 def has_imported_data(session: Session) -> bool:
     return session.scalar(select(OrderRecord.id).limit(1)) is not None or session.scalar(select(VehicleRecord.id).limit(1)) is not None
+
+
+def invalidate_plans(session: Session) -> None:
+    """Discard derived plans after source orders or vehicles have changed."""
+    for plan in session.scalars(select(RoutePlanRecord)):
+        session.delete(plan)
+    session.commit()

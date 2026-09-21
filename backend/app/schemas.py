@@ -83,3 +83,4 @@ class DashboardResponse(BaseModel):
     vehicles: list[VehiclePayload]
     metrics: MetricsResponse
     unassigned: list[UnassignedResponse]
+    route_plan: RoutePlanResponse

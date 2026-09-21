@@ -38,6 +38,8 @@ def test_dashboard_seeds_demo_scenario_and_exposes_unassigned_items(tmp_path) ->
     assert body["summary"]["active_vehicles"] == 2
     assert body["summary"]["unassigned_orders"] == 1
     assert body["unassigned"][0]["reason"] == "capacity_exceeded"
+    assert body["route_plan"]["id"] > 0
+    assert len(body["route_plan"]["routes"]) == 2
 
 
 def test_import_returns_row_level_errors_without_discarding_valid_csv_rows(tmp_path) -> None:
@@ -66,3 +68,20 @@ def test_route_plan_uses_default_settings_when_frontend_posts_no_body(tmp_path) 
 
     assert response.status_code == 201
     assert response.json()["metrics"]["total_duration_minutes"] > 0
+
+
+def test_imported_data_invalidates_old_plan_and_dashboard_returns_a_fresh_plan(tmp_path) -> None:
+    client = client_for(tmp_path)
+    first_plan_id = client.get("/dashboard").json()["route_plan"]["id"]
+
+    imported = client.post("/imports/orders", json=[
+        {"external_id": "new-order", "latitude": 43.24, "longitude": 76.95, "demand": 1, "priority": 2}
+    ])
+    dashboard = client.get("/dashboard").json()
+
+    assert imported.json()["accepted_count"] == 1
+    assert dashboard["summary"]["total_orders"] == 4
+    assert dashboard["route_plan"]["id"] != first_plan_id
+    assert dashboard["summary"]["assigned_orders"] == sum(
+        len(route["stops"]) for route in dashboard["route_plan"]["routes"]
+    )
