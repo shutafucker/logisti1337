@@ -70,6 +70,31 @@ class RoutePlanResponse(BaseModel):
     unassigned: list[UnassignedResponse]
 
 
+class ReplanRequest(BaseModel):
+    base_plan_id: int = Field(gt=0)
+    unavailable_vehicle_ids: list[str] = Field(min_length=1)
+
+
+class PlanSnapshot(BaseModel):
+    assigned_orders: int
+    unassigned_orders: int
+    distance_km: float
+    duration_minutes: float
+
+
+class ReplanComparison(BaseModel):
+    before: PlanSnapshot
+    after: PlanSnapshot
+    delta: PlanSnapshot
+
+
+class ReplanResponse(BaseModel):
+    base_plan_id: int
+    plan: RoutePlanResponse
+    comparison: ReplanComparison
+    unavailable_vehicle_ids: list[str]
+
+
 class DashboardSummary(BaseModel):
     total_orders: int
     assigned_orders: int

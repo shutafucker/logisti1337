@@ -6,6 +6,10 @@ import { PlanComparison } from './PlanComparison'
 import { number, reasonLabel, routeColor, statusLabel } from './labels'
 
 const formatErrors = (errors: ImportError[]) => errors.map(error => `Строка ${error.row ?? '?'}${error.field ? ` · ${error.field}` : ''}: ${error.reason}`).join('; ')
+const importResources = {
+  orders: { label: 'Загрузить заказы', inputLabel: 'Файл заказов', template: '/templates/orders-template.csv', templateName: 'orders-template.csv' },
+  vehicles: { label: 'Загрузить машины', inputLabel: 'Файл машин', template: '/templates/vehicles-template.csv', templateName: 'vehicles-template.csv' },
+} as const
 function errorMessage(error: unknown, operation: string) {
   if (error instanceof ApiError) {
     if (error.status === 404 && error.message === 'Not Found') return `${operation}: функция пока недоступна на сервере.`
@@ -131,7 +135,7 @@ export function Dashboard() {
   return <main className="dashboard-shell">
     <header className="header"><div><p className="eyebrow">LOGISTIAI · ДИСПЕТЧЕРСКАЯ</p><h1>План доставки<br />под контролем</h1><p className="subtitle">Распределяйте заказы и проверяйте, как изменения влияют на доставку.</p></div>
       <div className="header-actions"><button className="secondary-button" disabled={!!busy} onClick={() => void refresh()}>Обновить данные</button><button className="primary-button" disabled={!!busy || !data} onClick={() => void calculate()}>{busy === 'Расчёт маршрутов' ? 'Считаем…' : 'Рассчитать маршруты'}</button></div></header>
-    <section className="controls" aria-label="Импорт сценария"><div><strong>1. Загрузите исходные данные</strong><span>Заказы и машины в CSV или JSON</span></div><div className="control-actions">{(['orders', 'vehicles'] as const).map(resource => <label key={resource} className={`file-control ${busy ? 'disabled' : ''}`}>{resource === 'orders' ? 'Загрузить заказы' : 'Загрузить машины'}<input className="sr-only" aria-label={resource === 'orders' ? 'Файл заказов' : 'Файл машин'} type="file" disabled={!!busy} accept=".csv,.json,application/json,text/csv" onChange={event => void importFile(resource, event)} /></label>)}</div></section>
+    <section className="controls" aria-label="Импорт сценария"><div><strong>1. Загрузите исходные данные</strong><span>Заказы и машины в CSV или JSON. Сначала можно скачать и заполнить шаблон.</span></div><div className="control-actions">{(['orders', 'vehicles'] as const).map(resource => <div className="import-actions" key={resource}><a className="template-link" href={importResources[resource].template} download={importResources[resource].templateName}>Шаблон {resource === 'orders' ? 'заказов' : 'машин'}</a><label className={`file-control ${busy ? 'disabled' : ''}`}>{importResources[resource].label}<input className="sr-only" aria-label={importResources[resource].inputLabel} type="file" disabled={!!busy} accept=".csv,.json,application/json,text/csv" onChange={event => void importFile(resource, event)} /></label></div>)}</div></section>
     {error && <section className="message message--error" role="alert"><span>{error}</span><button disabled={!!busy} onClick={() => void refresh()}>Обновить и повторить</button></section>}
     {notice && <section className="message message--success" role="status">{notice}</section>}
     {busy && <p className="progress" role="status">{busy === 'load' ? 'Загрузка данных диспетчера…' : `${busy}…`}</p>}

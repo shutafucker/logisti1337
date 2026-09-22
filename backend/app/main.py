@@ -38,6 +38,10 @@ from app.schemas import (
     ImportResponse,
     MetricsResponse,
     OptimizeRequest,
+    PlanSnapshot,
+    ReplanComparison,
+    ReplanRequest,
+    ReplanResponse,
     RoutePlanResponse,
     RouteResponse,
     RouteStopResponse,
@@ -99,6 +103,49 @@ def create_app(database_url: str | None = None) -> FastAPI:
         if plan is None:
             raise HTTPException(status_code=404, detail="Route plan not found")
         return _plan_response(plan)
+
+    @app.post("/replans", response_model=ReplanResponse, status_code=201)
+    def replan(payload: ReplanRequest, session: Session = Depends(get_session)) -> ReplanResponse:
+        """Calculate a scenario without mutating the persistent vehicle statuses."""
+        base_plan = get_plan(session, payload.base_plan_id)
+        if base_plan is None:
+            raise HTTPException(status_code=404, detail="Base route plan not found")
+        latest = latest_plan(session)
+        if latest is None or latest.id != base_plan.id:
+            raise HTTPException(status_code=409, detail="Base route plan is no longer current")
+
+        unavailable_ids = sorted(set(payload.unavailable_vehicle_ids))
+        vehicles = list_vehicles(session)
+        known_ids = {vehicle.external_id for vehicle in vehicles}
+        unknown_ids = sorted(set(unavailable_ids) - known_ids)
+        if unknown_ids:
+            raise HTTPException(status_code=404, detail=f"Unknown vehicle IDs: {', '.join(unknown_ids)}")
+
+        scenario_vehicles = [vehicle for vehicle in vehicles if vehicle.external_id not in unavailable_ids]
+        route_plan = DeterministicRoutingProvider().optimize(
+            list_orders(session), scenario_vehicles,
+            average_speed_kmh=base_plan.average_speed_kmh,
+            service_minutes=base_plan.service_minutes,
+        )
+        new_plan = _plan_response(save_plan(
+            session, route_plan, base_plan.average_speed_kmh, base_plan.service_minutes,
+        ))
+        before = _snapshot(_plan_response(base_plan))
+        after = _snapshot(new_plan)
+        return ReplanResponse(
+            base_plan_id=base_plan.id,
+            plan=new_plan,
+            comparison=ReplanComparison(
+                before=before, after=after,
+                delta=PlanSnapshot(
+                    assigned_orders=after.assigned_orders - before.assigned_orders,
+                    unassigned_orders=after.unassigned_orders - before.unassigned_orders,
+                    distance_km=after.distance_km - before.distance_km,
+                    duration_minutes=after.duration_minutes - before.duration_minutes,
+                ),
+            ),
+            unavailable_vehicle_ids=unavailable_ids,
+        )
 
     @app.get("/dashboard", response_model=DashboardResponse)
     def dashboard(session: Session = Depends(get_session)) -> DashboardResponse:
@@ -185,6 +232,15 @@ def _plan_response(plan: RoutePlanRecord) -> RoutePlanResponse:
             total_duration_minutes=sum(route.duration_minutes for route in routes),
         ),
         unassigned=unassigned,
+    )
+
+
+def _snapshot(plan: RoutePlanResponse) -> PlanSnapshot:
+    return PlanSnapshot(
+        assigned_orders=sum(len(route.stops) for route in plan.routes),
+        unassigned_orders=len(plan.unassigned),
+        distance_km=plan.metrics.total_distance_km,
+        duration_minutes=plan.metrics.total_duration_minutes,
     )
 
 

@@ -1,0 +1,4 @@
+external_id,latitude,longitude,demand,priority,status
+AST-001,51.1694,71.4491,2,3,pending
+AST-002,51.1550,71.4700,4,2,pending
+AST-003,51.1850,71.4100,1,1,pending
