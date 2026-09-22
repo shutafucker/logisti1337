@@ -191,3 +191,92 @@ def test_replan_validates_base_plan_and_duplicate_vehicle_ids(tmp_path) -> None:
         "distance_km": 0,
         "duration_minutes": 0,
     }
+
+
+def test_agent_interpret_returns_503_when_unconfigured(monkeypatch, tmp_path) -> None:
+    monkeypatch.delenv("AI_API_KEY", raising=False)
+    monkeypatch.delenv("AI_MODEL", raising=False)
+    client = client_for(tmp_path)
+    base = _plan_with_two_vehicles(client)
+
+    response = client.post("/agent/interpret", json={
+        "message": "van-a сломалась",
+        "base_plan_id": base["id"],
+    })
+    assert response.status_code == 503
+    assert response.json() == {"detail": "AI is not configured"}
+
+
+def test_agent_interpret_validates_base_plan_existence_and_staleness(tmp_path) -> None:
+    client = client_for(tmp_path)
+    missing = client.post("/agent/interpret", json={"message": "любое сообщение", "base_plan_id": 404})
+    assert missing.status_code == 404
+    assert missing.json()["detail"] == "Base plan was not found"
+
+    base = _plan_with_two_vehicles(client)
+    # Invalidate plan with new import
+    client.post("/imports/orders", json=[
+        {"external_id": "ord-extra", "latitude": 43.24, "longitude": 76.95, "demand": 1, "priority": 1}
+    ])
+    stale = client.post("/agent/interpret", json={"message": "любое", "base_plan_id": base["id"]})
+    assert stale.status_code == 409
+
+
+def test_agent_interpret_to_replan_flow(tmp_path) -> None:
+    from app.agent.schemas import ModelInterpretation
+    from app.agent.service import AgentInterpreter
+
+    class StubProvider:
+        def interpret(self, message, context):
+            return ModelInterpretation(
+                intent="exclude_vehicles",
+                vehicle_ids=["van-a"],
+                explanation="Предлагаю пересчитать план без van-a.",
+                question=None,
+            )
+
+    client = client_for(tmp_path)
+    # inject stub interpreter into app state
+    client.app.state.agent_interpreter = AgentInterpreter(StubProvider())
+    base = _plan_with_two_vehicles(client)
+
+    # 1. Dispatcher sends natural language message to AI
+    ai_resp = client.post("/agent/interpret", json={
+        "message": "Машина van-a вышла из строя",
+        "base_plan_id": base["id"],
+    })
+    assert ai_resp.status_code == 200
+    ai_data = ai_resp.json()
+    assert ai_data["status"] == "ready"
+    assert ai_data["action"]["type"] == "exclude_vehicles"
+    assert ai_data["action"]["vehicle_ids"] == ["van-a"]
+
+    # 2. UI applies action and triggers replanning
+    replan_resp = client.post("/replans", json={
+        "base_plan_id": base["id"],
+        "unavailable_vehicle_ids": ai_data["action"]["vehicle_ids"],
+    })
+    assert replan_resp.status_code == 201
+    replan_data = replan_resp.json()
+    assert [r["vehicle_external_id"] for r in replan_data["plan"]["routes"]] == ["van-b"]
+    assert replan_data["comparison"]["after"]["assigned_orders"] == 1
+    assert replan_data["comparison"]["after"]["unassigned_orders"] == 1
+
+
+def test_completed_orders_are_ignored_during_route_planning(tmp_path) -> None:
+    client = client_for(tmp_path)
+    client.post("/imports/orders", json=[
+        {"external_id": "active", "latitude": 43.24, "longitude": 76.95, "demand": 2, "priority": 1, "status": "pending"},
+        {"external_id": "done", "latitude": 43.24, "longitude": 76.95, "demand": 2, "priority": 3, "status": "completed"},
+    ])
+    client.post("/imports/vehicles", json=[
+        {"external_id": "van", "latitude": 43.238, "longitude": 76.945, "capacity": 5, "status": "available"},
+    ])
+    created = client.post("/route-plans")
+    assert created.status_code == 201
+    plan = created.json()
+    stops = [s["order_external_id"] for r in plan["routes"] for s in r["stops"]]
+    unassigned = [u["order_external_id"] for u in plan["unassigned"]]
+    assert stops == ["active"]
+    assert unassigned == []
+

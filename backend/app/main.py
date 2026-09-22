@@ -11,6 +11,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.agent.provider import EnvironmentOpenAIProvider
+from app.agent.router import router as agent_router
+from app.agent.schemas import AgentContext
+from app.agent.service import AgentInterpreter
 from app.database import create_session_factory
 from app.domain import Order, Vehicle
 from app.imports import (
@@ -68,6 +72,42 @@ def create_app(database_url: str | None = None) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    app.include_router(agent_router)
+    app.state.agent_interpreter = AgentInterpreter(EnvironmentOpenAIProvider())
+
+    def get_agent_context(base_plan_id: int) -> AgentContext:
+        session = sessions()
+        try:
+            base_plan = get_plan(session, base_plan_id)
+            if base_plan is None:
+                raise LookupError(f"Route plan {base_plan_id} not found")
+            if not base_plan.is_current:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Base route plan is stale; calculate a new plan first",
+                )
+            vehicle_ids = tuple(
+                sorted({route.vehicle_external_id for route in base_plan.routes})
+            )
+            if not vehicle_ids:
+                vehicles = list_vehicles(session)
+                vehicle_ids = tuple(
+                    sorted(
+                        v.external_id
+                        for v in vehicles
+                        if v.status.strip().lower() == "available"
+                    )
+                )
+            if not vehicle_ids:
+                raise HTTPException(
+                    status_code=409,
+                    detail="No available vehicles found for base plan",
+                )
+            return AgentContext(base_plan_id=base_plan.id, vehicle_ids=vehicle_ids)
+        finally:
+            session.close()
+
+    app.state.agent_context_provider = get_agent_context
 
     def get_session():
         session = sessions()
@@ -161,7 +201,7 @@ def create_app(database_url: str | None = None) -> FastAPI:
             summary=DashboardSummary(
                 total_orders=len(orders), assigned_orders=assigned,
                 unassigned_orders=len(plan_response.unassigned),
-                active_vehicles=sum(vehicle.status.lower() == "available" for vehicle in vehicles),
+                active_vehicles=sum(vehicle.status.strip().lower() == "available" for vehicle in vehicles),
             ),
             orders=[_order_payload(order) for order in orders],
             vehicles=[_vehicle_payload(vehicle) for vehicle in vehicles],

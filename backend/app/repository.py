@@ -33,10 +33,12 @@ def upsert_orders(session: Session, orders: list[Order]) -> None:
     for order in orders:
         record = existing.get(order.external_id)
         if record is None:
-            session.add(OrderRecord(
+            new_record = OrderRecord(
                 external_id=order.external_id, latitude=order.latitude, longitude=order.longitude,
                 demand=order.demand, priority=order.priority, status=order.status,
-            ))
+            )
+            session.add(new_record)
+            existing[order.external_id] = new_record
         else:
             record.latitude, record.longitude = order.latitude, order.longitude
             record.demand, record.priority, record.status = order.demand, order.priority, order.status
@@ -48,10 +50,12 @@ def upsert_vehicles(session: Session, vehicles: list[Vehicle]) -> None:
     for vehicle in vehicles:
         record = existing.get(vehicle.external_id)
         if record is None:
-            session.add(VehicleRecord(
+            new_record = VehicleRecord(
                 external_id=vehicle.external_id, latitude=vehicle.latitude, longitude=vehicle.longitude,
                 capacity=vehicle.capacity, status=vehicle.status,
-            ))
+            )
+            session.add(new_record)
+            existing[vehicle.external_id] = new_record
         else:
             record.latitude, record.longitude = vehicle.latitude, vehicle.longitude
             record.capacity, record.status = vehicle.capacity, vehicle.status

@@ -97,3 +97,61 @@ def test_v1_components_implement_explicit_routing_protocols() -> None:
     assert isinstance(DeterministicRoutingProvider(), RoutingProvider)
     assert isinstance(HaversineEtaProvider(), EtaProvider)
     assert isinstance(CurrentDemandForecastProvider(), DemandForecastProvider)
+
+
+def test_non_routable_order_statuses_are_excluded_from_routing_and_unassigned() -> None:
+    active_order = Order("active-1", 43.24, 76.95, demand=2, priority=2, status="pending")
+    completed_order = Order("done-1", 43.24, 76.95, demand=2, priority=3, status="completed")
+    cancelled_order = Order("cancel-1", 43.24, 76.95, demand=2, priority=3, status="cancelled")
+    delivered_order = Order("delivered-1", 43.24, 76.95, demand=2, priority=3, status="delivered")
+
+    plan = DeterministicRoutingProvider().optimize(
+        [active_order, completed_order, cancelled_order, delivered_order],
+        [vehicle("van", capacity=10)],
+    )
+
+    assigned_ids = [stop.order.external_id for r in plan.routes for stop in r.stops]
+    unassigned_ids = [item.order.external_id for item in plan.unassigned]
+
+    assert assigned_ids == ["active-1"]
+    assert unassigned_ids == []
+
+
+def test_capacity_is_strictly_respected_across_vehicles() -> None:
+    orders = [
+        order("ord-1", demand=3, priority=2),
+        order("ord-2", demand=3, priority=2),
+        order("ord-3", demand=3, priority=1),
+    ]
+    vehicles = [vehicle("van-1", capacity=5), vehicle("van-2", capacity=2)]
+    plan = DeterministicRoutingProvider().optimize(orders, vehicles)
+
+    for route in plan.routes:
+        assert route.assigned_demand <= route.vehicle.capacity
+
+    assert len(plan.routes) == 1
+    assert [stop.order.external_id for stop in plan.routes[0].stops] == ["ord-1"]
+    assert [(item.order.external_id, item.reason) for item in plan.unassigned] == [
+        ("ord-2", "capacity_exceeded"),
+        ("ord-3", "capacity_exceeded"),
+    ]
+
+
+def test_each_routable_order_appears_exactly_once() -> None:
+    orders = [order(f"ord-{i}", demand=2, priority=i) for i in range(10)]
+    vehicles = [vehicle("v-1", capacity=6), vehicle("v-2", capacity=4)]
+    plan = DeterministicRoutingProvider().optimize(orders, vehicles)
+
+    assigned_ids = [stop.order.external_id for route in plan.routes for stop in route.stops]
+    unassigned_ids = [item.order.external_id for item in plan.unassigned]
+    all_processed = assigned_ids + unassigned_ids
+
+    assert len(all_processed) == len(set(all_processed)) == len(orders)
+    assert set(all_processed) == {o.external_id for o in orders}
+
+
+def test_haversine_km_handles_antipodal_extremes_without_domain_error() -> None:
+    from app.routing import haversine_km
+    distance = haversine_km(-90.0, 0.0, 90.0, 0.0)
+    assert distance > 20000
+

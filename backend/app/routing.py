@@ -48,6 +48,9 @@ class CurrentDemandForecastProvider:
         return order.demand
 
 
+NON_ROUTABLE_ORDER_STATUSES: frozenset[str] = frozenset({"completed", "cancelled", "delivered"})
+
+
 @dataclass(slots=True)
 class DeterministicRoutingProvider:
     """v1 assignment and route ordering with stable tie-breaking by external ID."""
@@ -76,7 +79,13 @@ class DeterministicRoutingProvider:
         remaining = {vehicle.external_id: vehicle.capacity for vehicle in available}
         unassigned: list[UnassignedOrder] = []
 
-        for order in sorted(orders, key=lambda item: (-item.priority, item.external_id)):
+        # Completed, cancelled, and delivered orders are inactive and excluded from routing.
+        routable_orders = [
+            order for order in orders
+            if order.status.strip().lower() not in NON_ROUTABLE_ORDER_STATUSES
+        ]
+
+        for order in sorted(routable_orders, key=lambda item: (-item.priority, item.external_id)):
             if not available:
                 unassigned.append(UnassignedOrder(order, "no_available_vehicle"))
                 continue
@@ -128,6 +137,7 @@ class DeterministicRoutingProvider:
                 current_latitude, current_longitude, next_order.latitude, next_order.longitude
             )
             elapsed_minutes += self.eta_provider.travel_minutes(distance_km, average_speed_kmh)
+            # Explicit ETA semantics: includes travel time and service completion at this stop.
             elapsed_minutes += service_minutes
             stops.append(
                 RouteStop(
@@ -159,4 +169,6 @@ def haversine_km(
         * cos(radians(latitude_b))
         * sin(delta_longitude / 2) ** 2
     )
-    return 2 * earth_radius_km * asin(sqrt(a))
+    # Clamp to [0.0, 1.0] to prevent math domain error in asin due to floating-point imprecision.
+    clamped_a = min(1.0, max(0.0, a))
+    return 2 * earth_radius_km * asin(sqrt(clamped_a))
