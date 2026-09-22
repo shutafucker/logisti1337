@@ -47,6 +47,23 @@ SQLite по умолчанию хранится в `backend/data/logistiai.db` �
 Для другого расположения установите `LOGISTIAI_DATABASE_URL`, например
 `sqlite:////tmp/logistiai.db` в `.env` перед запуском API.
 
+### Windows PowerShell
+
+```powershell
+cd backend
+py -3.14 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e '.[dev]'
+cd ..\frontend
+npm install
+cd ..
+.\scripts\start-dev.ps1
+```
+
+Скрипт проверяет окружение и занятость портов, запускает backend/frontend в
+отдельных процессах и печатает их PID. Он не завершает чужие процессы и не
+удаляет БД. Ошибки находятся в окнах этих процессов; остановить свои процессы
+можно командой `Stop-Process -Id <backend PID>,<frontend PID>`.
+
 ## Импорт данных
 
 В dashboard можно выбрать CSV или JSON-файл. Валидные строки сохраняются даже
@@ -83,6 +100,38 @@ VAN-03,43.2380,76.9450,8,available
   нераспределённые заказы.
 - `GET /dashboard` — данные для dashboard и последний рассчитанный план.
 
+### AI-интерпретация (подключается backend-владельцем)
+
+AI-модуль готов в `backend/app/agent/`, но основной `create_app` его намеренно
+не подключает: согласно распределению ролей это делает владелец backend по
+[инструкции интеграции](docs/demo/integration-handoff.md). После подключения
+доступен `POST /agent/interpret`:
+
+```json
+{"message":"VAN-02 сломалась","base_plan_id":1}
+```
+
+Ответ имеет один из статусов `ready`, `needs_clarification`, `unsupported`.
+Только `ready` возвращает действие `exclude_vehicles`; AI не рассчитывает ETA,
+не выполняет команд и не меняет план. UI должен затем отдельно вызвать
+`/replans` по общему контракту.
+
+Задайте только в backend-процессе (или в неотслеживаемом `.env`) следующие
+настройки:
+
+```text
+AI_API_KEY=
+AI_MODEL=
+AI_TIMEOUT_SECONDS=15
+```
+
+`.env` подхватывается текущим backend через `python-dotenv`; переменные процесса
+имеют приоритет. Не используйте `VITE_` для ключа. Для проверки настоящего
+вызова без раскрытия секрета в PowerShell сначала запустите API, затем
+используйте `./scripts/check-ai.ps1`: скрипт получает текущие `plan_id` и IDs
+машин из маршрутов этого плана через `/dashboard`, загружает root `.env` и печатает лишь валидированный
+результат. Зафиксируйте модель и дату в `docs/demo/results.md`.
+
 ETA — оценка в минутах от старта маршрута: haversine-расстояние, средняя
 скорость и время обслуживания на каждой точке. Линии на карте — прямые между
 рассчитанными остановками, а не дорожная геометрия.
@@ -101,3 +150,9 @@ cd frontend && npm test && npm run build
 расширяемые контракты `RoutingProvider`, `EtaProvider` и
 `DemandForecastProvider`, поэтому более точный solver, внешний routing API или
 прогноз можно подключать без переноса HTTP/UI-слоя.
+
+## Материалы демо
+
+- [Критерии и наборы данных](docs/demo/acceptance.md)
+- [Сценарий выступления](docs/demo/demo-script.md)
+- [Факты и результаты](docs/demo/results.md)

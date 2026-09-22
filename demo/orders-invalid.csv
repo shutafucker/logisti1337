@@ -1,0 +1,3 @@
+external_id,latitude,longitude,demand,priority,status
+AST-VALID,51.1694,71.4491,2,3,pending
+AST-BAD,95.0000,71.4235,2,2,pending

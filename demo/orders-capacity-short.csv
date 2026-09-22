@@ -1,0 +1,11 @@
+external_id,latitude,longitude,demand,priority,status
+AST-201,51.1694,71.4491,3,3,pending
+AST-202,51.1568,71.4235,2,3,pending
+AST-203,51.1787,71.4325,3,3,pending
+AST-204,51.1452,71.4089,2,2,pending
+AST-205,51.1326,71.4682,3,2,pending
+AST-206,51.1613,71.4774,2,2,pending
+AST-207,51.1844,71.4576,3,2,pending
+AST-208,51.1531,71.4418,2,1,pending
+AST-209,51.1742,71.4146,3,1,pending
+AST-210,51.1404,71.4383,2,1,pending
